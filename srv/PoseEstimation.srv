@@ -1,0 +1,21 @@
+# REQUEST
+
+string scenario
+
+------------------------------------
+# RESPONSE
+
+# Poses of detected objects
+geometry_msgs/Transform[] poses
+
+# Indices of detected objects, can be used to associate each detection to an object point cloud inside objects
+uint32[] labels_int
+
+# Pose godness value [0,1] for each detection
+float64[] pose_value
+
+#scene cloud
+sensor_msgs/PointCloud2 scene
+
+#object cloud
+sensor_msgs/PointCloud2 object
