@@ -243,7 +243,7 @@ void detectRotorcaps(pcl::PointCloud<PointT> cutScene, PoseEstimation::Response 
 	pcl::toROSMsg(cutScene, scenei);
 
 	MsgT msgrotorcaps;
-	msgrotorcaps.request.visualize = true;
+	msgrotorcaps.request.visualize = false;
 	msgrotorcaps.request.rotorcap = true;
 	msgrotorcaps.request.table = false;
         msgrotorcaps.request.threshold = 5;
@@ -269,7 +269,7 @@ void detectConveyourBeltAndRotorcaps(PoseEstimation::Response &resp){
 	sensor_msgs::PointCloud2 scenei;
 	pcl::toROSMsg(carmine_pointCloud, scenei);
 
-	msgglobal.request.visualize = true;
+	msgglobal.request.visualize = false;
 	msgglobal.request.table = false;
     	msgglobal.request.threshold = 10;
 	msgglobal.request.cothres = 1;
