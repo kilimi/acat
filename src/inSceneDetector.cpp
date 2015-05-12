@@ -200,24 +200,21 @@ pcl::PointCloud<PointT> cutTable(pcl::PointCloud<PointA>::Ptr object, pcl::Point
 
 
     pcl::PointCloud<PointA>::Ptr object_transformed (new pcl::PointCloud<PointA>);
-    pcl::PointCloud<PointA>::Ptr table (new pcl::PointCloud<PointA>);
+   /* pcl::PointCloud<PointA>::Ptr table (new pcl::PointCloud<PointA>);
     table->height = 1;
     table->width = 8;
-    table->points.resize(conveyour->height * conveyour->width);
+    table->points.resize(table->height * table->width);
 
     (*table)[0] = (*object)[13783]; (*table)[1] = (*object)[6117];
     (*table)[2] = (*object)[450]; (*table)[3] = (*object)[359];
     (*table)[4] = (*object)[540]; (*table)[5] = (*object)[9138];
     (*table)[6] = (*object)[15491]; (*table)[7] = (*object)[14892];
-
-    pcl::transformPointCloud(*table, *object_transformed, m);
-    pcl::PointCloud<PointT> small_cube = getCutRegion(object_transformed, 0.5, 0.5, 0.5, scene);
+*/
+    pcl::transformPointCloud(*object, *object_transformed, m);
+    pcl::PointCloud<PointT> small_cube = getCutRegion(object_transformed, 0.25, 0.25, 0.4, scene);
     return small_cube;
 }
 //------------------------------------------------------------------
-
-
-
 
 pcl::PointCloud<PointT> cutConveyourBelt(pcl::PointCloud<PointA>::Ptr object, pcl::PointCloud<PointT> scene, MsgT msgglobal1){
 
@@ -272,7 +269,7 @@ void storeResults(PoseEstimation::Response &resp, MsgT data, sensor_msgs::PointC
     publish_for_vizualizer.publish(resp);
 }
 //-------------------------------------------------------------------------------------------------
-void detectRotorcaps(pcl::PointCloud<PointT> cutScene, PoseEstimation::Response &resp, std::vector<double> constr){
+void detectRotorcaps(pcl::PointCloud<PointT> cutScene, PoseEstimation::Response &resp, std::vector<double> constr, bool viz){
 
     ros::NodeHandle nh("~");
     std::string rotorcapPCD;
@@ -286,7 +283,7 @@ void detectRotorcaps(pcl::PointCloud<PointT> cutScene, PoseEstimation::Response 
     pcl::toROSMsg(cutScene, scenei);
 
     MsgT msgrotorcaps;
-    msgrotorcaps.request.visualize = false;
+    msgrotorcaps.request.visualize = viz;
     msgrotorcaps.request.rotorcap = true;
     msgrotorcaps.request.table = false;
     msgrotorcaps.request.threshold = 5;
@@ -306,7 +303,7 @@ void detectRotorcaps(pcl::PointCloud<PointT> cutScene, PoseEstimation::Response 
 
 }
 //--------------------------------------------------------------------------------------------
-void detectConveyourBeltAndRotorcaps(PoseEstimation::Response &resp){
+void detectConveyourBeltAndRotorcaps(PoseEstimation::Response &resp, bool viz){
     //---POSE ESTIMATION BLOCK
     ROS_INFO("Subscribing to /service/getPose ...");
     ros::service::waitForService("/service/getPose");
@@ -314,7 +311,7 @@ void detectConveyourBeltAndRotorcaps(PoseEstimation::Response &resp){
     sensor_msgs::PointCloud2 scenei;
     pcl::toROSMsg(carmine_pointCloud, scenei);
 
-    msgglobal.request.visualize = true;
+    msgglobal.request.visualize = viz;
     msgglobal.request.table = false;
     msgglobal.request.threshold = 10;
     msgglobal.request.cothres = 1;
@@ -330,12 +327,52 @@ void detectConveyourBeltAndRotorcaps(PoseEstimation::Response &resp){
 
         if (stereo_pointCloud.size() > 1){
             pcl::PointCloud<pcl::PointXYZRGBA> outSmall = cutConveyourBelt(object, stereo_pointCloud, msgglobal);
-            detectRotorcaps(outSmall, resp, constr_conveyor);
+            detectRotorcaps(outSmall, resp, constr_conveyor, false);
             keep_latest_best_pose = msgglobal;
         }
     } else {
         ROS_ERROR("Something went wrong when calling /object_detection/global");
     }
+}
+//----------------------------
+void detectTableAndRotorcaps(PoseEstimation::Response &resp, bool viz){
+    //---POSE ESTIMATION BLOCK
+    ROS_INFO("Subscribing to /service/getPose ...");
+    ros::service::waitForService("/service/getPose");
+
+    sensor_msgs::PointCloud2 scenei;
+    pcl::toROSMsg(carmine_pointCloud, scenei);
+
+    msgglobal.request.visualize = viz;
+    msgglobal.request.table = false;
+    msgglobal.request.threshold = 15;
+    msgglobal.request.cothres = 1;
+
+    msgglobal.request.objects.clear();
+    msgglobal.request.objects.push_back(object_path);
+
+    msgglobal.request.cloud = scenei;
+    if(getPose.call(msgglobal)) {
+
+        pcl::PointCloud<PointA>::Ptr object(new pcl::PointCloud<PointA>());
+        pcl::io::loadPCDFile(object_path, *object);
+
+        if (stereo_pointCloud.size() > 1){
+            pcl::PointCloud<pcl::PointXYZRGBA> outSmall = cutTable(object, stereo_pointCloud, msgglobal);
+            if (outSmall.size() > 1) detectRotorcaps(outSmall, resp, constr_table, true);
+	    else detectTableAndRotorcaps(resp, viz);
+            //keep_latest_best_pose = msgglobal; should you keep best pose globally?
+        }
+    } else {
+        ROS_ERROR("Something went wrong when calling /object_detection/global");
+    }
+}
+
+void saveLocallyPointClouds(std::string pcddir){
+	pcl::io::savePCDFile(pcddir+"carmine_PC.pcd", carmine_pointCloud);
+        pcl::io::savePCDFile(pcddir+"carmine_PC.pcd", carmine_pointCloud);
+        pcl::io::savePCDFileBinary(pcddir+"stereo_PC_binary.pcd", stereo_pointCloud);
+        pcl::io::savePCDFile(pcddir+"stereo_PC.pcd", stereo_pointCloud);
 }
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -357,21 +394,31 @@ bool pose_estimation_service(PoseEstimation::Request &req, PoseEstimation::Respo
             pcl::console::print_value("Saving stereo and carmine point clouds\n");
         }
     }
+    else if(scenario == "detect_rotorcaps_on_table"){
+        ros::NodeHandle nh("~");
+        std::string pcddir;
+        nh.getParam("table_2PCD", object_path);
+        nh.getParam("pcddir", pcddir);
+
+        if (carmine_pointCloud.size()> 0 && stereo_pointCloud.size() > 0) {
+	    pcl::console::print_value("Detecting table, then rotorcaps\n");
+            saveLocallyPointClouds(pcddir);
+            detectTableAndRotorcaps(resp, false);
+        }
+        else pcl::console::print_error("Cannot grasp frame from carmine & stereo! Are you sure they are running?!");
+    }
     else if (scenario == "detect_rotorcaps_on_coveyour_belt"){
         ros::NodeHandle nh("~");
         std::string pcddir;
         nh.getParam("conveyor_belt_2PCD", object_path);
         nh.getParam("pcddir", pcddir);
 
-        pcl::console::print_value("Detecting conveyor, then rotorcaps\n");
-
-        if (carmine_pointCloud.size()> 0 && stereo_pointCloud.size() > 0) {
-            pcl::io::savePCDFile(pcddir+"carmine_PC.pcd", carmine_pointCloud);
-            pcl::io::savePCDFileBinary(pcddir+"stereo_PC_binary.pcd", stereo_pointCloud);
-            pcl::io::savePCDFile(pcddir+"stereo_PC.pcd", stereo_pointCloud);
-            detectConveyourBeltAndRotorcaps(resp);
+        if (stereo_pointCloud.size() > 0 && carmine_pointCloud.size() > 0) {
+	    pcl::console::print_value("Detecting conveyor, then rotorcaps\n");
+	    saveLocallyPointClouds(pcddir);
+            detectConveyourBeltAndRotorcaps(resp, false);
         }
-        else pcl::console::print_error("Cannot grasp frame from carmine & stereo! Are you sure they are running?!");
+        else pcl::console::print_error("Cannot grasp frame from carmine & stereo! Are you sure they are running?! stereo size: %d carmine size: %d\n", stereo_pointCloud.size(), carmine_pointCloud.size());
 
 
     }
@@ -381,8 +428,6 @@ bool pose_estimation_service(PoseEstimation::Request &req, PoseEstimation::Respo
         std::string pcddir;
         nh.getParam("conveyor_belt_2PCD", object_path);
         nh.getParam("pcddir", pcddir);
-        if (carmine_pointCloud.size() > 0) pcl::io::savePCDFile(pcddir+"carmine_PC.pcd", carmine_pointCloud);
-        if (stereo_pointCloud.size() > 0) pcl::io::savePCDFile(pcddir+"stereo_PC.pcd", stereo_pointCloud);
 
             pcl::PointCloud<PointA>::Ptr object(new pcl::PointCloud<PointA>());
             pcl::io::loadPCDFile(object_path, *object);
@@ -393,7 +438,7 @@ bool pose_estimation_service(PoseEstimation::Request &req, PoseEstimation::Respo
                 pcl::io::savePCDFile(pcddir+"stereo_PC.pcd", stereo_pointCloud);
 
                 pcl::PointCloud<pcl::PointXYZRGBA> outSmall = cutConveyourBelt(object, stereo_pointCloud, keep_latest_best_pose);
-                detectRotorcaps(outSmall, resp, constr_conveyor);
+                detectRotorcaps(outSmall, resp, constr_conveyor, false);
             }
         } else {
             pcl::console::print_error("There is no conveyour pose! Get conveyour pose first!\n");
@@ -413,10 +458,15 @@ void fillConstrains(){
     constr_conveyor.push_back(-0.043472);
     constr_conveyor.push_back(-0.018472);
     constr_conveyor.push_back(0.856371);
+    //-----------------------------------
+    constr_table.push_back(-0.02571);
+    constr_table.push_back(-0.7486);
+    constr_table.push_back(-0.6624);
 
+    constr_table.push_back(-0.330305);
+    constr_table.push_back(-0.226706);
+    constr_table.push_back(0.698164);
 }
-
-
 
 /*
  * Main entry point
