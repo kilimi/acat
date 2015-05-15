@@ -186,6 +186,70 @@ pcl::PointCloud<PointT> getCutRegion(pcl::PointCloud<PointA>::Ptr object_transfo
     return small_cube;
 }
 //----------------------------------------
+////////////////////////////////////////////////////////////////////////////////////////////////////////////
+pcl::PointCloud<PointT> getCutRegionForTable(pcl::PointCloud<PointA>::Ptr object_transformed, float _cut_x, float _cut_y, float _cut_z, pcl::PointCloud<PointT> scene){
+    //----------------
+    Eigen::Vector4f centroid;
+    pcl::compute3DCentroid(*object_transformed, centroid);
+    Eigen::Matrix3f covariance;
+    computeCovarianceMatrixNormalized(*object_transformed, centroid, covariance);
+    Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eigen_solver(covariance, Eigen::ComputeEigenvectors);
+    Eigen::Matrix3f eigDx = eigen_solver.eigenvectors();
+    eigDx.col(2) = eigDx.col(0).cross(eigDx.col(1));
+
+    // move the points to the that reference frame
+    Eigen::Matrix4f p2w(Eigen::Matrix4f::Identity());
+    p2w.block<3,3>(0,0) = eigDx.transpose();
+    p2w.block<3,1>(0,3) = -1.f * (p2w.block<3,3>(0,0) * centroid.head<3>());
+    pcl::PointCloud<PointA> cPoints;
+    pcl::transformPointCloud(*object_transformed, cPoints, p2w);
+    PointA min_pt, max_pt;
+    pcl::getMinMax3D(cPoints, min_pt, max_pt);
+    const Eigen::Vector3f mean_diag = 0.5f*(max_pt.getVector3fMap() + min_pt.getVector3fMap());
+    // final transform
+
+    const Eigen::Quaternionf qfinal(eigDx);
+    const Eigen::Vector3f tfinal = eigDx*mean_diag + centroid.head<3>();
+    pcl::PointXYZRGB minp, maxp;
+    Eigen::Matrix4f _tr = Eigen::Matrix4f::Identity();
+    _tr.topLeftCorner<3,3>() = qfinal.toRotationMatrix();
+    _tr.block<3,1>(0,3) = tfinal;
+
+    float _x = (max_pt.x-min_pt.x)* _cut_x;
+    float _y = (max_pt.y-min_pt.y) * _cut_y;
+    float _z = (max_pt.z-min_pt.z) * _cut_z;
+
+    //****
+    _tr = _tr.inverse().eval();
+
+    pcl::PointCloud<PointT>::Ptr cloud_bm (new pcl::PointCloud<PointT>);
+    *cloud_bm = scene;
+
+    pcl::PointIndices::Ptr object_indices (new pcl::PointIndices);
+    for (size_t i = 0; i < cloud_bm->size(); i++){
+        PointT p = (*cloud_bm)[i];
+
+        p.getVector4fMap() = _tr * p.getVector4fMap();
+        if (p.x < (min_pt.x * 1.8) || p.y < (min_pt.y * 1.8) || p.z < (min_pt.z * 1.8)
+                 || p.x > max_pt.x * 3|| p.y > max_pt.y* 1 || p.z > max_pt.z * 1 )
+                {
+
+                }else object_indices->indices.push_back(i);
+
+    }
+    pcl::PointCloud<PointT> small_cube;
+
+    small_cube.height = 1;
+    small_cube.width = object_indices->indices.size();
+    small_cube.points.resize(small_cube.height * small_cube.width);
+
+    pcl::copyPointCloud (*cloud_bm , object_indices->indices, small_cube );
+    if (small_cube.size() > 0) pcl::io::savePCDFile("small_cube01.pcd", small_cube);
+
+
+    return small_cube;
+}
+//------------------------------------------------------------------------------
 pcl::PointCloud<PointT> cutTable(pcl::PointCloud<PointA>::Ptr object, pcl::PointCloud<PointT> scene, MsgT msgglobal1){
 
     tf::Transform transform;
@@ -198,20 +262,27 @@ pcl::PointCloud<PointT> cutTable(pcl::PointCloud<PointA>::Ptr object, pcl::Point
     m_init(14) = m_init(14)/1000;
     m = m_init;
 
+    m(0) = 0.999995;    m(1) = -0.00224549;    m(2) = 0.00208427;
+    m(4) = 0.00224671;    m(5) = 0.999997;    m(6) = -0.000595095;
+    m(8) = -0.00208288;    m(9) = 0.000599744;    m(10) = 0.999998;
+    m(12) = 7.07721/1000;    m(13) = -0.0677484/1000;    m(14) = -0.741719/1000;
+    m(3) = 0;    m(7) = 0;    m(11) = 0;  m(15) = 1;
 
     pcl::PointCloud<PointA>::Ptr object_transformed (new pcl::PointCloud<PointA>);
-   /* pcl::PointCloud<PointA>::Ptr table (new pcl::PointCloud<PointA>);
+    pcl::PointCloud<PointA>::Ptr table (new pcl::PointCloud<PointA>);
     table->height = 1;
     table->width = 8;
     table->points.resize(table->height * table->width);
+    
+    (*table)[0] = (*object)[108000]; (*table)[1] = (*object)[108001];
+    (*table)[2] = (*object)[108002]; (*table)[3] = (*object)[108003];
+    (*table)[4] = (*object)[108004]; (*table)[5] = (*object)[108005];
+    (*table)[6] = (*object)[108006]; (*table)[7] = (*object)[108007];
+    
 
-    (*table)[0] = (*object)[13783]; (*table)[1] = (*object)[6117];
-    (*table)[2] = (*object)[450]; (*table)[3] = (*object)[359];
-    (*table)[4] = (*object)[540]; (*table)[5] = (*object)[9138];
-    (*table)[6] = (*object)[15491]; (*table)[7] = (*object)[14892];
-*/
-    pcl::transformPointCloud(*object, *object_transformed, m);
-    pcl::PointCloud<PointT> small_cube = getCutRegion(object_transformed, 0.25, 0.25, 0.4, scene);
+    pcl::transformPointCloud(*table, *object_transformed, m);
+    //pcl::PointCloud<PointT> small_cube = getCutRegion(object_transformed, 0.9, 0.9, 0.9, scene);
+    pcl::PointCloud<PointT> small_cube = getCutRegionForTable(object_transformed, 0.9, 0.9, 0.9, scene);
     return small_cube;
 }
 //------------------------------------------------------------------
@@ -291,14 +362,20 @@ void detectRotorcaps(pcl::PointCloud<PointT> cutScene, PoseEstimation::Response 
     msgrotorcaps.request.objects.clear();
     msgrotorcaps.request.objects.push_back(rotorcapPCD);
 
-    msgrotorcaps.request.constrains = constr_conveyor;
+    msgrotorcaps.request.constrains = constr;
 
     pcl::PointCloud<PointT> object;
     pcl::io::loadPCDFile(rotorcapPCD, object);
 
     msgrotorcaps.request.cloud = scenei;
-    if(getPose.call(msgrotorcaps)) {
-        storeResults(resp, msgrotorcaps, scenei, object);
+    bool tryAgain = false;
+    while (!tryAgain){
+    	if(getPose.call(msgrotorcaps)) {
+	   if (msgrotorcaps.response.poses.size() > 0 ) {
+           	storeResults(resp, msgrotorcaps, scenei, object);
+           	tryAgain = true;
+	   }
+    	}
     }
 
 }
@@ -320,19 +397,26 @@ void detectConveyourBeltAndRotorcaps(PoseEstimation::Response &resp, bool viz){
     msgglobal.request.objects.push_back(object_path);
 
     msgglobal.request.cloud = scenei;
-    if(getPose.call(msgglobal)) {
-
-        pcl::PointCloud<PointA>::Ptr object(new pcl::PointCloud<PointA>());
-        pcl::io::loadPCDFile(object_path, *object);
-
+    pcl::PointCloud<pcl::PointXYZRGBA> outSmall;
+    
+    pcl::PointCloud<PointA>::Ptr object(new pcl::PointCloud<PointA>());
+    pcl::io::loadPCDFile(object_path, *object);
+    bool tryAgain = false;
+    while(!tryAgain) {
+	pcl::console::print_warn("Trying to detect conveyor!\n");
+        getPose.call(msgglobal);
         if (stereo_pointCloud.size() > 1){
             pcl::PointCloud<pcl::PointXYZRGBA> outSmall = cutConveyourBelt(object, stereo_pointCloud, msgglobal);
-            detectRotorcaps(outSmall, resp, constr_conveyor, false);
+            if (outSmall.size()> 0) {
+		detectRotorcaps(outSmall, resp, constr_conveyor, false);
+		tryAgain = true;
+	    }
             keep_latest_best_pose = msgglobal;
         }
-    } else {
-        ROS_ERROR("Something went wrong when calling /object_detection/global");
     }
+    //} else {
+    //    ROS_ERROR("Something went wrong when calling /object_detection/global");
+   // }
 }
 //----------------------------
 void detectTableAndRotorcaps(PoseEstimation::Response &resp, bool viz){
@@ -345,7 +429,7 @@ void detectTableAndRotorcaps(PoseEstimation::Response &resp, bool viz){
 
     msgglobal.request.visualize = viz;
     msgglobal.request.table = false;
-    msgglobal.request.threshold = 15;
+    msgglobal.request.threshold = 20;
     msgglobal.request.cothres = 1;
 
     msgglobal.request.objects.clear();
@@ -359,7 +443,7 @@ void detectTableAndRotorcaps(PoseEstimation::Response &resp, bool viz){
 
         if (stereo_pointCloud.size() > 1){
             pcl::PointCloud<pcl::PointXYZRGBA> outSmall = cutTable(object, stereo_pointCloud, msgglobal);
-            if (outSmall.size() > 1) detectRotorcaps(outSmall, resp, constr_table, true);
+            if (outSmall.size() > 0) detectRotorcaps(outSmall, resp, constr_table, false);
 	    else detectTableAndRotorcaps(resp, viz);
             //keep_latest_best_pose = msgglobal; should you keep best pose globally?
         }
@@ -458,14 +542,18 @@ void fillConstrains(){
     constr_conveyor.push_back(-0.043472);
     constr_conveyor.push_back(-0.018472);
     constr_conveyor.push_back(0.856371);
+    constr_conveyor.push_back(0.05);
     //-----------------------------------
     constr_table.push_back(-0.02571);
     constr_table.push_back(-0.7486);
     constr_table.push_back(-0.6624);
 
-    constr_table.push_back(-0.330305);
-    constr_table.push_back(-0.226706);
-    constr_table.push_back(0.698164);
+    constr_table.push_back(-0.301625);
+    constr_table.push_back(-0.207056);
+    constr_table.push_back(1.191860);
+    constr_table.push_back(0.15);
+
+
 }
 
 /*
