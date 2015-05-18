@@ -264,11 +264,11 @@ pcl::PointCloud<PointT> cutTable(pcl::PointCloud<PointA>::Ptr object, pcl::Point
     m_init(14) = m_init(14)/1000;
     m = m_init;
 
-    m(0) = 0.999995;    m(1) = -0.00224549;    m(2) = 0.00208427;
+   /* m(0) = 0.999995;    m(1) = -0.00224549;    m(2) = 0.00208427;
     m(4) = 0.00224671;    m(5) = 0.999997;    m(6) = -0.000595095;
     m(8) = -0.00208288;    m(9) = 0.000599744;    m(10) = 0.999998;
     m(12) = 7.07721/1000;    m(13) = -0.0677484/1000;    m(14) = -0.741719/1000;
-    m(3) = 0;    m(7) = 0;    m(11) = 0;  m(15) = 1;
+    m(3) = 0;    m(7) = 0;    m(11) = 0;  m(15) = 1; */
 
     pcl::PointCloud<PointA>::Ptr object_transformed (new pcl::PointCloud<PointA>);
     pcl::PointCloud<PointA>::Ptr table (new pcl::PointCloud<PointA>);
@@ -407,12 +407,6 @@ bool detectConveyourBeltAndRotorcaps(PoseEstimation::Response &resp, bool viz, E
         m_init(14) = m_init(14)/1000;
         m = m_init; 
 
-   /* m(0) = 0.999403;    m(1) = 0.0246888;    m(2) = 0.00819257;
-    m(4) = -0.024643;    m(5) = 0.99968;    m(6) = -0.00564397;
-    m(8) = -0.0083293;    m(9) = 0.00544018;    m(10) = 0.999951;
-    m(12) = -0.0068171;    m(13) = 0.0200884;    m(14) = -0.0348979;
-    m(3) = 0;    m(7) = 0;    m(11) = 0;  m(15) = 1; */
-
 	keep_latest_best_pose = m;		
 	return true;
     } else {
@@ -503,33 +497,41 @@ bool pose_estimation_service(PoseEstimation::Request &req, PoseEstimation::Respo
 	    saveLocallyPointClouds(pcddir);
             
 	    Eigen::Matrix4f m, m_backUp;
-	    m_backUp(0) = 0.998868;    m_backUp(1) = -0.0473491;    m_backUp(2) = 0.00443143;
-    	    m_backUp(4) = 0.0474501;    m_backUp(5) = 0.998522;    m_backUp(6) = -0.02649;
-    	    m_backUp(8) = -0.00317053;    m_backUp(9) = 0.0266703;    m_backUp(10) = 0.999639;
-    	    m_backUp(12) = 0.0531114;    m_backUp(13) = -50.5847/1000;    m_backUp(14) = 34.7588/1000;
-    	    m_backUp(3) = 0;    m_backUp(7) = 0;    m_backUp(11) = 0;  m_backUp(15) = 1; 
-            std::cout << "m_backUp: \n" << m_backUp << std::endl;
+
+	
+   /* m_backUp(0) = 0.999995;    m_backUp(1) = -0.00224549;    m_backUp(2) = 0.00208427;
+    m_backUp(4) = 0.00224671;    m_backUp(5) = 0.999997;    m_backUp(6) = -0.000595095;
+    m_backUp(8) = -0.00208288;    m_backUp(9) = 0.000599744;    m_backUp(10) = 0.999998;
+    m_backUp(12) = 7.07721/1000;    m_backUp(13) = -0.0677484/1000;    m_backUp(14) = -0.741719/1000;
+    m_backUp(3) = 0;    m_backUp(7) = 0;    m_backUp(11) = 0;  m_backUp(15) = 1;*/
+
+           m_backUp(0) =  0.999826;    m_backUp(1) = -0.0161273;    m_backUp(2) = -0.0106435;
+               m_backUp(4) =  0.0159015;    m_backUp(5) = 0.999664;    m_backUp(6) = -0.0209254;
+               m_backUp(8) = 0.0109774;    m_backUp(9) = 0.0207531;    m_backUp(10) = 0.999735;
+               m_backUp(12) = 0.0392795;    m_backUp(13) = -0.0450697;    m_backUp(14) = 0.0324294;
+               m_backUp(3) = 0;    m_backUp(7) = 0;    m_backUp(11) = 0;  m_backUp(15) = 1;
+
 	    pcl::PointCloud<PointA>::Ptr object(new pcl::PointCloud<PointA>());
     	    pcl::io::loadPCDFile(object_path, *object);
 
 	    bool detected = detectConveyourBeltAndRotorcaps(resp, false, m);
 
 	    //check if it is not a wrong conveyor belt
-	    if (abs(m(12) - m_backUp(12)) > 0.1){ m = m_backUp;
+	    if (abs(m(12) - m_backUp(12)) > 0.1 || abs(m(13) - m_backUp(13)) > 0.1 && abs(m(14) - m_backUp(14)) > 0.1){ m = m_backUp;
 pcl::console::print_error("USING!");}
             
             pcl::PointCloud<PointT> outSmall;
 	    if (detected) outSmall = cutConveyourBelt(object, stereo_pointCloud, m);
 	    else {
 		pcl::console::print_error("Using predefined m, stereo point cloud %d and carmine %d\n", stereo_pointCloud.size(), carmine_pointCloud.size());
-		outSmall = cutConveyourBelt(object, stereo_pointCloud, m);
+		outSmall = cutConveyourBelt(object, stereo_pointCloud, m_backUp);
 	    }
 
 	   
 	   bool rotorcaps_detected = detectRotorcaps(outSmall, resp, constr_conveyor, false);
 	   if (!rotorcaps_detected) {
 		for(int r = 0; r < 10; r++) {		
-			pcl::console::print_error("Finding rotorcaps again\n");
+			pcl::console::print_error("Finding rotorcaps again %d\n", r);
 			outSmall = cutConveyourBelt(object, stereo_pointCloud, m);
 			rotorcaps_detected = detectRotorcaps(outSmall, resp, constr_conveyor, false);
 		if (rotorcaps_detected) break;
