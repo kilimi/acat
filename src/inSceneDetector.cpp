@@ -551,7 +551,35 @@ pcl::PointCloud<PointT> processConveyorBelt(PoseEstimation::Response &resp){
 	    }
 return outSmall;
 }
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ pcl::PointCloud<PointT> extractPlane(pcl::PointCloud<PointT> cur, float thr){
+pcl::PointCloud<PointT> out;
+ pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
+    pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
+    // Create the segmentation object
+    pcl::SACSegmentation<PointT> seg;
+    // Optional
+    seg.setOptimizeCoefficients (true);
+    // Mandatory
+    seg.setModelType (pcl::SACMODEL_PLANE);
+    seg.setMethodType (pcl::SAC_RANSAC);
+    seg.setDistanceThreshold (thr);
 
+
+    pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
+    pcl::copyPointCloud<PointT, PointT>(cur, *cloud);
+    seg.setInputCloud (cloud);
+    seg.segment (*inliers, *coefficients);
+
+    
+    // Create the filtering object
+    pcl::ExtractIndices<PointT> extract;
+    extract.setInputCloud (cloud);
+    extract.setIndices (inliers);
+    extract.setNegative (true);
+    extract.filter (out);
+return out;
+}
 //------------------------------------------------------------------------------------------------------------------------
 bool pose_estimation_service(PoseEstimation::Request &req, PoseEstimation::Response &resp){
     ROS_INFO("Starting pose estimation service\n!");
@@ -579,18 +607,20 @@ bool pose_estimation_service(PoseEstimation::Request &req, PoseEstimation::Respo
         nh.getParam("pcddir", pcddir);
 
         if (carmine_pointCloud.size()> 0 && stereo_pointCloud.size() > 0) {
-	    pcl::console::print_value("Detecting rotorcaps\n");
+	    saveLocallyPointClouds(pcddir);
+            pcl::console::print_value("Detecting rotorcaps\n");
        
 	    pcl::PointCloud<pcl::PointXYZRGBA> small_table;
              //we have the big pose, just cut conveyor and estimate rotorcaps
 	    if (local_screen_shot_pose_detected) {
 		small_table = cutSceneScreenShot("table", stereo_pointCloud);
+                small_table = extractPlane(small_table, 0.0055);
 	    } else {
 		pcl::console::print_value("Detecting table, then rotorcaps\n");
 		small_table = detectTableAndRotorcaps(resp, false);
 	    }
             if (small_table.size() > 0) detectRotorcaps(small_table, resp, constr_table, false);
-	    saveLocallyPointClouds(pcddir);
+	    
         }
         else pcl::console::print_error("Cannot grasp frame from carmine & stereo! Are you sure they are running?!");
     }
@@ -603,11 +633,13 @@ bool pose_estimation_service(PoseEstimation::Request &req, PoseEstimation::Respo
 
         pcl::PointCloud<PointT> outSmall;
         if (stereo_pointCloud.size() > 0 && carmine_pointCloud.size() > 0) {
-	    pcl::console::print_value("Detecting rotorcaps\n");
+saveLocallyPointClouds(pcddir);	    
+	pcl::console::print_value("Detecting rotorcaps\n");
             
 	    //we have the big pose, just cut conveyor and estimate rotorcaps
 	    if (local_screen_shot_pose_detected) {
 		outSmall = cutSceneScreenShot("conveyor", stereo_pointCloud);
+                outSmall = extractPlane(outSmall, 0.007);
 	    }
 	    else {
             //detect conveyor
@@ -615,7 +647,7 @@ bool pose_estimation_service(PoseEstimation::Request &req, PoseEstimation::Respo
 	      processConveyorBelt(resp);
 	    }
 	    bool rotorcaps_detected = detectRotorcaps(outSmall, resp, constr_conveyor, false);
-	    saveLocallyPointClouds(pcddir);
+	    
         }
         else pcl::console::print_error("Cannot grasp frame from carmine & stereo! Are you sure they are running?! stereo size: %d carmine size: %d\n", stereo_pointCloud.size(), carmine_pointCloud.size());
 }

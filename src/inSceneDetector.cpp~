@@ -579,7 +579,8 @@ bool pose_estimation_service(PoseEstimation::Request &req, PoseEstimation::Respo
         nh.getParam("pcddir", pcddir);
 
         if (carmine_pointCloud.size()> 0 && stereo_pointCloud.size() > 0) {
-	    pcl::console::print_value("Detecting rotorcaps\n");
+saveLocallyPointClouds(pcddir);	    
+pcl::console::print_value("Detecting rotorcaps\n");
        
 	    pcl::PointCloud<pcl::PointXYZRGBA> small_table;
              //we have the big pose, just cut conveyor and estimate rotorcaps
@@ -590,7 +591,7 @@ bool pose_estimation_service(PoseEstimation::Request &req, PoseEstimation::Respo
 		small_table = detectTableAndRotorcaps(resp, false);
 	    }
             if (small_table.size() > 0) detectRotorcaps(small_table, resp, constr_table, false);
-	    saveLocallyPointClouds(pcddir);
+	    
         }
         else pcl::console::print_error("Cannot grasp frame from carmine & stereo! Are you sure they are running?!");
     }
@@ -603,7 +604,8 @@ bool pose_estimation_service(PoseEstimation::Request &req, PoseEstimation::Respo
 
         pcl::PointCloud<PointT> outSmall;
         if (stereo_pointCloud.size() > 0 && carmine_pointCloud.size() > 0) {
-	    pcl::console::print_value("Detecting rotorcaps\n");
+saveLocallyPointClouds(pcddir);	    
+	pcl::console::print_value("Detecting rotorcaps\n");
             
 	    //we have the big pose, just cut conveyor and estimate rotorcaps
 	    if (local_screen_shot_pose_detected) {
@@ -615,7 +617,7 @@ bool pose_estimation_service(PoseEstimation::Request &req, PoseEstimation::Respo
 	      processConveyorBelt(resp);
 	    }
 	    bool rotorcaps_detected = detectRotorcaps(outSmall, resp, constr_conveyor, false);
-	    saveLocallyPointClouds(pcddir);
+	    
         }
         else pcl::console::print_error("Cannot grasp frame from carmine & stereo! Are you sure they are running?! stereo size: %d carmine size: %d\n", stereo_pointCloud.size(), carmine_pointCloud.size());
 }
