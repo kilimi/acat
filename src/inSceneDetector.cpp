@@ -255,7 +255,7 @@ pcl::PointCloud<PointT> getCutRegionForTable(pcl::PointCloud<PointA>::Ptr object
     pcl::copyPointCloud (*cloud_bm , object_indices->indices, small_cube );
 
     if (small_cube.size() > 0) pcl::io::savePCDFile("small_cube01.pcd", small_cube);
-else std::cout << "small cube has 0 points\n";
+    else std::cout << "small cube has 0 points\n";
 
     return small_cube;
 }
@@ -385,7 +385,7 @@ void icpForRotorcaps(PoseEstimation::Response &resp, MsgT &data, pcl::PointCloud
         rotorcap_pose(12) = rotorcap_pose(12)/1000;
         rotorcap_pose(13) = rotorcap_pose(13)/1000;
         rotorcap_pose(14) = rotorcap_pose(14)/1000;
-       
+
         pcl::PointCloud<PointT>::Ptr scenePtr(new pcl::PointCloud<PointT>);
         scenePtr = scene.makeShared();
 
@@ -416,8 +416,8 @@ void icpForRotorcaps(PoseEstimation::Response &resp, MsgT &data, pcl::PointCloud
             convert(m, dest);
 
             //store results
-           // data.response.poses[i] = dest;
-           data.response.poses.push_back(dest);
+            // data.response.poses[i] = dest;
+            data.response.poses.push_back(dest);
         }
     }
 }
@@ -453,7 +453,7 @@ bool detectRotorcaps(pcl::PointCloud<PointT> cutScene, PoseEstimation::Response 
 
     msgrotorcaps.request.cloud = scenei;
     if(getPose.call(msgrotorcaps)) {
-       // icpForRotorcaps(resp, msgrotorcaps, cutScene, object);
+        // icpForRotorcaps(resp, msgrotorcaps, cutScene, object);
         storeResults(resp, msgrotorcaps, scenei, object);
         return true;
     } else return false;
@@ -534,14 +534,16 @@ pcl::PointCloud<pcl::PointXYZRGBA> detectTableAndRotorcaps(PoseEstimation::Respo
 //-----------------------------------------------------------------------------
 void detectScreenShot(PoseEstimation::Response &resp, bool viz){
     //---POSE ESTIMATION BLOCK
-    ROS_INFO("Subscribing to /service/getPose ...");
+   /* ROS_INFO("Subscribing to /service/getPose ...");
     ros::service::waitForService("/service/getPose");
 
     sensor_msgs::PointCloud2 scenei;
-    pcl::toROSMsg(carmine_pointCloud, scenei);
+    pcl::toROSMsg(carmine_pointCloud, scenei); */
 
-    MsgT msgScreenShot;
-    msgScreenShot.request.visualize = viz;
+    if (carmine_pointCloud.size() == 0) pcl::console::print_error("CARMINE point cloud is null!\n");
+
+  /*  MsgT msgScreenShot;
+    msgScreenShot.request.visualize = true;
     msgScreenShot.request.table = false;
     msgScreenShot.request.threshold = 20;
     msgScreenShot.request.cothres = 1;
@@ -553,18 +555,42 @@ void detectScreenShot(PoseEstimation::Response &resp, bool viz){
     if(getPose.call(msgScreenShot)) {
         tf::Transform transform;
         tf::transformMsgToTF(msgScreenShot.response.poses[0], transform);
+*/
+
 
         Eigen::Matrix4f m_init;
-        transformAsMatrix(transform, m_init);
+ m_init(0) = 0.999376;
+ m_init(1) = 0.00516939;
+ m_init(2) = -0.0349304;
+ m_init(3) = 0;
+
+ m_init(4) = -0.00320716;
+ m_init(5) = 0.998426;
+ m_init(6) = 0.0559996;
+ m_init(7) = 0;
+
+ m_init(8) = 0.0351649;
+ m_init(9) =  -0.0558526;
+ m_init(10) = 0.99782;
+ m_init(11) = 0;
+
+ m_init(12) =  -56.9315;
+ m_init(13) =  45.6348;
+ m_init(14) = 60.6687;
+ m_init(15) = 1;
+
+
+       // transformAsMatrix(transform, m_init);
+std::cout << m_init<< std::endl;
         m_init(12) = m_init(12)/1000;
         m_init(13) = m_init(13)/1000;
         m_init(14) = m_init(14)/1000;
         local_screen_shot_pose = m_init;
         local_screen_shot_pose_detected = true;
         pcl::console::print_value("Found screen shot pose!\n");
-    } else {
+   /* } else {
         ROS_ERROR("Something went wrong when calling /object_detection/global");
-    }
+    } */
 }
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 //----------------------------------------------------------------------------
@@ -587,7 +613,7 @@ pcl::PointCloud<PointT> cutSceneScreenShot(string object_name, pcl::PointCloud<P
         pcl::transformPointCloud(*obj, *object_transformed, local_screen_shot_pose);
         small_cube = getCutRegionForTable(object_transformed, 1, 1, 1, 3, 1, 1, scene);
     } else if (object_name == "conveyor") {
-       /* (*obj)[0] = (screen_shot_object)[224008]; (*obj)[1] = (screen_shot_object)[224009];
+        /* (*obj)[0] = (screen_shot_object)[224008]; (*obj)[1] = (screen_shot_object)[224009];
         (*obj)[2] = (screen_shot_object)[224010]; (*obj)[3] = (screen_shot_object)[224011];
         (*obj)[4] = (screen_shot_object)[224012]; (*obj)[5] = (screen_shot_object)[224013];
         (*obj)[6] = (screen_shot_object)[224014]; (*obj)[7] = (screen_shot_object)[224015]; */
@@ -596,24 +622,36 @@ pcl::PointCloud<PointT> cutSceneScreenShot(string object_name, pcl::PointCloud<P
         (*obj)[4] = (screen_shot_object)[307212]; (*obj)[5] = (screen_shot_object)[307213];
         (*obj)[6] = (screen_shot_object)[307214]; (*obj)[7] = (screen_shot_object)[307215]; */
 
-	(*obj)[0] = (screen_shot_object)[72008]; (*obj)[1] = (screen_shot_object)[72009];
-        (*obj)[2] = (screen_shot_object)[72010]; (*obj)[3] = (screen_shot_object)[72011];
-        (*obj)[4] = (screen_shot_object)[72012]; (*obj)[5] = (screen_shot_object)[72013];
-        (*obj)[6] = (screen_shot_object)[72014]; (*obj)[7] = (screen_shot_object)[72015];
+//        (*obj)[0] = (screen_shot_object)[72008]; (*obj)[1] = (screen_shot_object)[72009];
+//        (*obj)[2] = (screen_shot_object)[72010]; (*obj)[3] = (screen_shot_object)[72011];
+//        (*obj)[4] = (screen_shot_object)[72012]; (*obj)[5] = (screen_shot_object)[72013];
+//        (*obj)[6] = (screen_shot_object)[72014]; (*obj)[7] = (screen_shot_object)[72015];
+
+        (*obj)[0] = (screen_shot_object)[56008]; (*obj)[1] = (screen_shot_object)[56009];
+        (*obj)[2] = (screen_shot_object)[56010]; (*obj)[3] = (screen_shot_object)[56011];
+        (*obj)[4] = (screen_shot_object)[56012]; (*obj)[5] = (screen_shot_object)[56013];
+        (*obj)[6] = (screen_shot_object)[56014]; (*obj)[7] = (screen_shot_object)[56015];
 
         pcl::transformPointCloud(*obj, *object_transformed, local_screen_shot_pose);
         //small_cube = getCutRegionForTable(object_transformed, 1.8, 1.8, 1.8, 3, 2, 1, scene);
-        small_cube = getCutRegionForTable(object_transformed, 1, 1, 1, 1, 1, 0.5, scene);
+        small_cube = getCutRegionForTable(object_transformed, 1.2, 1.2, 1.2, 1.2, 1.2, 1.8, scene);
     }
     return small_cube;
 }
 
 //----------------------------------------------------------------------------
 void saveLocallyPointClouds(std::string pcddir){
-    pcl::io::savePCDFile(pcddir+"carmine_PC.pcd", carmine_pointCloud);
-    pcl::io::savePCDFile(pcddir+"carmine_PC.pcd", carmine_pointCloud);
-    pcl::io::savePCDFileBinary(pcddir+"stereo_PC_binary.pcd", stereo_pointCloud);
-    pcl::io::savePCDFile(pcddir+"stereo_PC.pcd", stereo_pointCloud);
+    if (carmine_pointCloud.size() < 1) pcl::console::print_error("CARMINE has less then 1 point!\n");
+    else {
+        pcl::io::savePCDFile(pcddir+"carmine_PC.pcd", carmine_pointCloud);
+        pcl::io::savePCDFile(pcddir+"carmine_PC.pcd", carmine_pointCloud);
+    }
+    if (stereo_pointCloud.size() < 1) pcl::console::print_error("STEREO has less then 1 point!\n");
+    else {
+
+        pcl::io::savePCDFileBinary(pcddir+"stereo_PC_binary.pcd", stereo_pointCloud);
+        pcl::io::savePCDFile(pcddir+"stereo_PC.pcd", stereo_pointCloud);
+    }
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -766,14 +804,14 @@ bool pose_estimation_service(PoseEstimation::Request &req, PoseEstimation::Respo
         ros::NodeHandle nh("~");
         std::string pcddir;
         nh.getParam("scene_screenshot_PCD", object_path);
- 	
+
         nh.getParam("pcddir", pcddir);
 
         if (carmine_pointCloud.size() > 0) {
             pcl::console::print_value("Detecting scene screenshot!\n");
             saveLocallyPointClouds(pcddir);
             detectScreenShot(resp, false);
-        }
+        } else pcl::console::print_error("Cannot detect, because carmine size is 0!\n");
     }
     return true;
 }
