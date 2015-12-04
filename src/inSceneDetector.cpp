@@ -51,8 +51,16 @@
 #include <object_detection/DetectObject.h>
 #include <pose_estimation/PoseEstimation.h>
 
+#include <object_detection_covis_new/DetectObjectCovisNew.h>
+
+// PTU
+//#include <actionlib/client/simple_action_client.h>
+//#include "flir_d48E_driver/PTUAction.h"
+
+
 typedef pose_estimation::PoseEstimation PoseEstimation;
 typedef object_detection::DetectObject MsgT;
+typedef object_detection_covis_new::DetectObjectCovisNew DetectObjectCovisNew;
 
 using namespace std;
 using namespace tr1;
@@ -65,8 +73,10 @@ typedef pcl::PointXYZRGBA PointT;
 typedef pcl::PointXYZRGB PointA;
 typedef pcl::PointCloud<PointT> CloudT;
 
-
-
+//PTU
+//actionlib::SimpleActionClient<flir_d48E_driver::PTUAction>* actionClient;
+//END PTU
+DetectObjectCovisNew triplets;
 MsgT msgglobal;
 Eigen::Matrix4f keep_latest_best_pose;
 //-------------------------------
@@ -100,6 +110,7 @@ std::vector<double> constr_conveyor, constr_table;
 
 //ros::ServiceClient pose_estimation_service_client;
 ros::ServiceClient getPose;
+ros::ServiceClient getPoseCovisNew;
 string object_path;
 
 void stereoPointCloudSaver(ros::NodeHandle nh, string name);
@@ -344,6 +355,30 @@ void storeResults(PoseEstimation::Response &resp, MsgT data, sensor_msgs::PointC
     resp.poses = data.response.poses;
     resp.pose_value = data.response.pose_value;
     resp.labels_int = data.response.labels_int;
+
+    //publish here
+    publish_for_vizualizer.publish(resp);
+}
+
+void storeResultsCovisNew(PoseEstimation::Response &resp, DetectObjectCovisNew data, sensor_msgs::PointCloud2 scenei, pcl::PointCloud<PointT> object){
+    // Store results
+    resp.labels_int.clear();
+    resp.poses.clear();
+    resp.pose_value.clear();
+
+    //resp.labels_int.resize(data.response.poses.size());
+    resp.poses.reserve(data.response.poses.size());
+    //resp.pose_value.resize(data.response.poses.size());
+
+    sensor_msgs::PointCloud2 objecti;
+    pcl::toROSMsg(object, objecti);
+
+    resp.scene = scenei;
+    resp.object = objecti;
+
+    resp.poses = data.response.poses;
+    //resp.pose_value = data.response.pose_value;
+    //resp.labels_int = data.response.labels_int;
 
     //publish here
     publish_for_vizualizer.publish(resp);
@@ -613,19 +648,6 @@ pcl::PointCloud<PointT> cutSceneScreenShot(string object_name, pcl::PointCloud<P
         pcl::transformPointCloud(*obj, *object_transformed, local_screen_shot_pose);
         small_cube = getCutRegionForTable(object_transformed, 1, 1, 1, 3, 1, 1, scene);
     } else if (object_name == "conveyor") {
-        /* (*obj)[0] = (screen_shot_object)[224008]; (*obj)[1] = (screen_shot_object)[224009];
-        (*obj)[2] = (screen_shot_object)[224010]; (*obj)[3] = (screen_shot_object)[224011];
-        (*obj)[4] = (screen_shot_object)[224012]; (*obj)[5] = (screen_shot_object)[224013];
-        (*obj)[6] = (screen_shot_object)[224014]; (*obj)[7] = (screen_shot_object)[224015]; */
-        /*(*obj)[0] = (screen_shot_object)[307208]; (*obj)[1] = (screen_shot_object)[307209];
-        (*obj)[2] = (screen_shot_object)[307210]; (*obj)[3] = (screen_shot_object)[307211];
-        (*obj)[4] = (screen_shot_object)[307212]; (*obj)[5] = (screen_shot_object)[307213];
-        (*obj)[6] = (screen_shot_object)[307214]; (*obj)[7] = (screen_shot_object)[307215]; */
-
-//        (*obj)[0] = (screen_shot_object)[72008]; (*obj)[1] = (screen_shot_object)[72009];
-//        (*obj)[2] = (screen_shot_object)[72010]; (*obj)[3] = (screen_shot_object)[72011];
-//        (*obj)[4] = (screen_shot_object)[72012]; (*obj)[5] = (screen_shot_object)[72013];
-//        (*obj)[6] = (screen_shot_object)[72014]; (*obj)[7] = (screen_shot_object)[72015];
 
         (*obj)[0] = (screen_shot_object)[56008]; (*obj)[1] = (screen_shot_object)[56009];
         (*obj)[2] = (screen_shot_object)[56010]; (*obj)[3] = (screen_shot_object)[56011];
@@ -709,6 +731,34 @@ pcl::PointCloud<PointT> extractPlane(pcl::PointCloud<PointT> cur, float thr){
     extract.filter (out);
     return out;
 }
+
+//************************************************************************************************************************
+bool detectRotorcapsOnTheFixture(PoseEstimation::Response &resp) {
+    //---COVIS NEW POSE ESTIMATION BLOCK
+    ROS_INFO("Subscribing to /triplets/getPoseCovisNew ...");
+    ros::service::waitForService("/triplets/getPoseCovisNew");
+
+    sensor_msgs::PointCloud2 scenei;
+    pcl::toROSMsg(carmine_pointCloud, scenei);
+
+    triplets.request.visualize = false;
+    triplets.request.scenario = "rotorcaps_on_the_fixture";
+    triplets.request.cloud = scenei;
+
+
+    pcl::PointCloud<PointT> cad_model;// (new pcl::PointCloud<PointT>());
+    pcl::io::loadPCDFile<PointT>("/home/acat2/catkin_ws/src/aau_workcell/data/r_top.pcd", cad_model);
+
+    if(getPoseCovisNew.call(triplets)) {
+       std::cout << "Calling triplets.....\n";
+       storeResultsCovisNew(resp, triplets, scenei, cad_model);
+       return true;
+    } else {
+        ROS_ERROR("Something went wrong when calling /object_detection/global");
+    } 
+    return false;
+}
+
 //------------------------------------------------------------------------------------------------------------------------
 bool pose_estimation_service(PoseEstimation::Request &req, PoseEstimation::Response &resp){
     ROS_INFO("Starting pose estimation service\n!");
@@ -728,6 +778,7 @@ bool pose_estimation_service(PoseEstimation::Request &req, PoseEstimation::Respo
             pcl::console::print_value("Saving stereo and carmine point clouds\n");
         }
     }
+
     //..................................................................
     else if(scenario == "detect_rotorcaps_on_table"){
         ros::NodeHandle nh("~");
@@ -753,6 +804,7 @@ bool pose_estimation_service(PoseEstimation::Request &req, PoseEstimation::Respo
         }
         else pcl::console::print_error("Cannot grasp frame from carmine & stereo! Are you sure they are running?!");
     }
+ 
     ///------------------------------------------------------------------------------
     else if (scenario == "detect_rotorcaps_on_coveyour_belt"){
         ros::NodeHandle nh("~");
@@ -813,6 +865,19 @@ bool pose_estimation_service(PoseEstimation::Request &req, PoseEstimation::Respo
             detectScreenShot(resp, false);
         } else pcl::console::print_error("Cannot detect, because carmine size is 0!\n");
     }
+    else if (scenario == "detect_rotorcaps_on_the_fixture"){
+        ros::NodeHandle nh("~");
+        std::string pcddir;
+        nh.getParam("pcddir", pcddir);
+
+        if (stereo_pointCloud.size() > 1 && carmine_pointCloud.size()> 0){
+            saveLocallyPointClouds(pcddir);
+            detectRotorcapsOnTheFixture(resp);
+        }
+        else pcl::console::print_error("Fail with carmine or streo point clouds\n");   
+    }
+
+
     return true;
 }
 //------------------------------------------------------------------------------------------------------------------------
@@ -851,13 +916,17 @@ int main(int argc, char **argv) {
     ros::NodeHandle nh("~");
     ROS_INFO("waiting for service/getPose");
     getPose = nh.serviceClient<MsgT>("/service/getPose");
+    
+    getPoseCovisNew = nh.serviceClient<DetectObjectCovisNew>("/triplets/getPoseCovisNew");
+
     stereoPointCloudSaver(nh, "/pikeBack");
     kinectPointCloudSaver(nh, "/carmine1");
     ROS_INFO("Starting services!");
 
     pcl::console::setVerbosityLevel(pcl::console::L_WARN);
     
-    if (!once) {
+
+  /*  if (!once) {
         // Start
         fillConstrains();
 
@@ -869,7 +938,7 @@ int main(int argc, char **argv) {
         //--------------------
         once = true;
     }
-
+*/
     ros::ServiceServer servglobal = nh.advertiseService<PoseEstimation::Request, PoseEstimation::Response>("detect", pose_estimation_service);
 
     publish_for_vizualizer = nh.advertise<PoseEstimation::Response>("vizualize", 1000);
