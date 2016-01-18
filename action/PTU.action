@@ -1,0 +1,13 @@
+#parameters should correspond to those defined in
+string mode	#either move or home for now!
+float64 pos_pan
+float64 pos_tilt
+float64 vel_pan
+float64 vel_tilt
+---
+int16 goalID
+time elapsedTotal
+int8 state
+---
+time elapsedNow
+

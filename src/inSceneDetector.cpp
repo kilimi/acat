@@ -54,9 +54,10 @@
 #include <object_detection_covis_new/DetectObjectCovisNew.h>
 
 // PTU
-//#include <actionlib/client/simple_action_client.h>
-//#include "flir_d48E_driver/PTUAction.h"
+#include <actionlib/client/simple_action_client.h>
+#include "pose_estimation/PTUAction.h"
 
+actionlib::SimpleActionClient<pose_estimation::PTUAction>* actionClient;
 
 typedef pose_estimation::PoseEstimation PoseEstimation;
 typedef object_detection::DetectObject MsgT;
@@ -73,16 +74,15 @@ typedef pcl::PointXYZRGBA PointT;
 typedef pcl::PointXYZRGB PointA;
 typedef pcl::PointCloud<PointT> CloudT;
 
-//PTU
-//actionlib::SimpleActionClient<flir_d48E_driver::PTUAction>* actionClient;
-//END PTU
+pose_estimation::PTUGoal myGoal;
+
 DetectObjectCovisNew triplets;
 MsgT msgglobal;
 Eigen::Matrix4f keep_latest_best_pose;
 //-------------------------------
 Eigen::Matrix4f local_screen_shot_pose;
 bool local_screen_shot_pose_detected;
-pcl::PointCloud<PointA> screen_shot_object; 
+pcl::PointCloud<PointA> screen_shot_object;
 //----------------------------
 PoseEstimation poseEstimationMsgT;
 
@@ -294,12 +294,12 @@ pcl::PointCloud<PointT> cutTable(pcl::PointCloud<PointA>::Ptr object, pcl::Point
     table->height = 1;
     table->width = 8;
     table->points.resize(table->height * table->width);
-    
+
     (*table)[0] = (*object)[108000]; (*table)[1] = (*object)[108001];
     (*table)[2] = (*object)[108002]; (*table)[3] = (*object)[108003];
     (*table)[4] = (*object)[108004]; (*table)[5] = (*object)[108005];
     (*table)[6] = (*object)[108006]; (*table)[7] = (*object)[108007];
-    
+
 
     pcl::transformPointCloud(*table, *object_transformed, m);
     pcl::PointCloud<PointT> small_cube = getCutRegionForTable(object_transformed, 1.8, 1.8, 1.8, 3, 1, 1, scene);
@@ -366,9 +366,9 @@ void storeResultsCovisNew(PoseEstimation::Response &resp, DetectObjectCovisNew d
     resp.poses.clear();
     resp.pose_value.clear();
 
-    //resp.labels_int.resize(data.response.poses.size());
+    resp.labels_int.resize(data.response.poses.size());
     resp.poses.reserve(data.response.poses.size());
-    //resp.pose_value.resize(data.response.poses.size());
+    resp.pose_value.resize(data.response.poses.size());
 
     sensor_msgs::PointCloud2 objecti;
     pcl::toROSMsg(object, objecti);
@@ -377,8 +377,8 @@ void storeResultsCovisNew(PoseEstimation::Response &resp, DetectObjectCovisNew d
     resp.object = objecti;
 
     resp.poses = data.response.poses;
-    //resp.pose_value = data.response.pose_value;
-    //resp.labels_int = data.response.labels_int;
+    resp.pose_value = data.response.pose_value;
+    resp.labels_int = data.response.labels_int;
 
     //publish here
     publish_for_vizualizer.publish(resp);
@@ -513,7 +513,7 @@ bool detectConveyourBeltAndRotorcaps(PoseEstimation::Response &resp, bool viz, E
 
     msgconveyor.request.cloud = scenei;
     pcl::PointCloud<pcl::PointXYZRGBA> outSmall;
-    
+
     //pcl::console::print_warn("Trying to detect conveyor!\n");
     if (getPose.call(msgconveyor)){
 
@@ -569,18 +569,18 @@ pcl::PointCloud<pcl::PointXYZRGBA> detectTableAndRotorcaps(PoseEstimation::Respo
 //-----------------------------------------------------------------------------
 void detectScreenShot(PoseEstimation::Response &resp, bool viz){
     //---POSE ESTIMATION BLOCK
-   /* ROS_INFO("Subscribing to /service/getPose ...");
+    ROS_INFO("Subscribing to /service/getPose ...");
     ros::service::waitForService("/service/getPose");
 
     sensor_msgs::PointCloud2 scenei;
-    pcl::toROSMsg(carmine_pointCloud, scenei); */
+    pcl::toROSMsg(carmine_pointCloud, scenei); 
 
     if (carmine_pointCloud.size() == 0) pcl::console::print_error("CARMINE point cloud is null!\n");
 
-  /*  MsgT msgScreenShot;
-    msgScreenShot.request.visualize = true;
+    MsgT msgScreenShot;
+    msgScreenShot.request.visualize = viz;
     msgScreenShot.request.table = false;
-    msgScreenShot.request.threshold = 20;
+    msgScreenShot.request.threshold = 10;
     msgScreenShot.request.cothres = 1;
 
     msgScreenShot.request.objects.clear();
@@ -590,48 +590,25 @@ void detectScreenShot(PoseEstimation::Response &resp, bool viz){
     if(getPose.call(msgScreenShot)) {
         tf::Transform transform;
         tf::transformMsgToTF(msgScreenShot.response.poses[0], transform);
-*/
+	Eigen::Matrix4f m_init;
 
-
-        Eigen::Matrix4f m_init;
- m_init(0) = 0.999376;
- m_init(1) = 0.00516939;
- m_init(2) = -0.0349304;
- m_init(3) = 0;
-
- m_init(4) = -0.00320716;
- m_init(5) = 0.998426;
- m_init(6) = 0.0559996;
- m_init(7) = 0;
-
- m_init(8) = 0.0351649;
- m_init(9) =  -0.0558526;
- m_init(10) = 0.99782;
- m_init(11) = 0;
-
- m_init(12) =  -56.9315;
- m_init(13) =  45.6348;
- m_init(14) = 60.6687;
- m_init(15) = 1;
-
-
-       // transformAsMatrix(transform, m_init);
-std::cout << m_init<< std::endl;
+        transformAsMatrix(transform, m_init);
         m_init(12) = m_init(12)/1000;
         m_init(13) = m_init(13)/1000;
         m_init(14) = m_init(14)/1000;
         local_screen_shot_pose = m_init;
         local_screen_shot_pose_detected = true;
+	std::cout << "m_init: \n" << m_init << std::endl;
         pcl::console::print_value("Found screen shot pose!\n");
-   /* } else {
+    } else {
         ROS_ERROR("Something went wrong when calling /object_detection/global");
-    } */
+    } 
 }
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 //----------------------------------------------------------------------------
 //_x=1.8 --_y=1.8 --_z=1.8 --_x2=3 --_y2=1 --_z2=1 conveyor
 pcl::PointCloud<PointT> cutSceneScreenShot(string object_name, pcl::PointCloud<PointT> scene) {
-    
+
     pcl::PointCloud<PointA>::Ptr object_transformed (new pcl::PointCloud<PointA>);
     pcl::PointCloud<PointA>::Ptr obj (new pcl::PointCloud<PointA>);
     obj->height = 1;
@@ -665,8 +642,9 @@ pcl::PointCloud<PointT> cutSceneScreenShot(string object_name, pcl::PointCloud<P
 void saveLocallyPointClouds(std::string pcddir){
     if (carmine_pointCloud.size() < 1) pcl::console::print_error("CARMINE has less then 1 point!\n");
     else {
+        pcl::io::savePCDFileBinary(pcddir+"carmine_PC_binary.pcd", carmine_pointCloud);
         pcl::io::savePCDFile(pcddir+"carmine_PC.pcd", carmine_pointCloud);
-        pcl::io::savePCDFile(pcddir+"carmine_PC.pcd", carmine_pointCloud);
+        pcl::console::print_error("CARMINE IS SAVED!!!!\n");
     }
     if (stereo_pointCloud.size() < 1) pcl::console::print_error("STEREO has less then 1 point!\n");
     else {
@@ -722,7 +700,7 @@ pcl::PointCloud<PointT> extractPlane(pcl::PointCloud<PointT> cur, float thr){
     seg.setInputCloud (cloud);
     seg.segment (*inliers, *coefficients);
 
-    
+
     // Create the filtering object
     pcl::ExtractIndices<PointT> extract;
     extract.setInputCloud (cloud);
@@ -732,6 +710,20 @@ pcl::PointCloud<PointT> extractPlane(pcl::PointCloud<PointT> cur, float thr){
     return out;
 }
 
+//**********************************************************************************************************************
+void movePTU(float pan, float tilt,  std::string pcddir){
+	//move ptu
+     myGoal.mode = "move";
+     myGoal.vel_pan = 0.4;
+     myGoal.vel_tilt = 0.4;
+     myGoal.pos_pan = pan;
+     myGoal.pos_tilt = tilt; 
+
+     actionClient->sendGoalAndWait(myGoal);
+     ros::spinOnce();  
+     saveLocallyPointClouds(pcddir);
+
+}
 //************************************************************************************************************************
 bool detectRotorcapsOnTheFixture(PoseEstimation::Response &resp) {
     //---COVIS NEW POSE ESTIMATION BLOCK
@@ -755,7 +747,83 @@ bool detectRotorcapsOnTheFixture(PoseEstimation::Response &resp) {
        return true;
     } else {
         ROS_ERROR("Something went wrong when calling /object_detection/global");
-    } 
+    }
+    return false;
+}
+bool detectRotorAxles(PoseEstimation::Response &resp) {
+    //---COVIS NEW POSE ESTIMATION BLOCK
+    ROS_INFO("Subscribing to /triplets/getPoseCovisNew ...");
+    ros::service::waitForService("/triplets/getPoseCovisNew");
+
+    sensor_msgs::PointCloud2 scenei;
+    pcl::toROSMsg(stereo_pointCloud, scenei);
+
+    triplets.request.visualize = false;
+    triplets.request.scenario = "rotoraxles";
+    triplets.request.cloud = scenei;
+//pcl::console::print_error("Scenei size: %d\n", scenei.size());
+
+
+    pcl::PointCloud<PointT> cad_model;
+    pcl::io::loadPCDFile<PointT>("/home/acat2/catkin_ws/src/aau_workcell/data/axle_cad.pcd", cad_model);
+
+    if(getPoseCovisNew.call(triplets)) {
+       std::cout << "Calling triplets.....\n";
+       storeResultsCovisNew(resp, triplets, scenei, cad_model);
+       return true;
+    } else {
+        ROS_ERROR("Something went wrong when calling /object_detection/global");
+    }
+    return false;
+}
+//-------------------------------------------------------------------------------
+bool detectRing(PoseEstimation::Response &resp) {
+    //---COVIS NEW POSE ESTIMATION BLOCK
+    ROS_INFO("Subscribing to /triplets/getPoseCovisNew ...");
+    ros::service::waitForService("/triplets/getPoseCovisNew");
+
+    sensor_msgs::PointCloud2 scenei;
+    pcl::toROSMsg(carmine_pointCloud, scenei);
+
+    triplets.request.visualize = false;
+    triplets.request.scenario = "ring";
+    triplets.request.cloud = scenei;
+
+    pcl::PointCloud<PointT> cad_model;
+    pcl::io::loadPCDFile<PointT>("/home/acat2/catkin_ws/src/aau_workcell/data/ring.pcd", cad_model);
+
+    if(getPoseCovisNew.call(triplets)) {
+       std::cout << "Calling triplets.....\n";
+       storeResultsCovisNew(resp, triplets, scenei, cad_model);
+       return true;
+    } else {
+        ROS_ERROR("Something went wrong when calling /object_detection/global");
+    }
+    return false;
+}
+
+bool detectMagnet(PoseEstimation::Response &resp) {
+    //---COVIS NEW POSE ESTIMATION BLOCK
+    ROS_INFO("Subscribing to /triplets/getPoseCovisNew ...");
+    ros::service::waitForService("/triplets/getPoseCovisNew");
+
+    sensor_msgs::PointCloud2 scenei;
+    pcl::toROSMsg(carmine_pointCloud, scenei);
+
+    triplets.request.visualize = false;
+    triplets.request.scenario = "magnet";
+    triplets.request.cloud = scenei;
+
+    pcl::PointCloud<PointT> cad_model;
+    pcl::io::loadPCDFile<PointT>("/home/acat2/catkin_ws/src/aau_workcell/data/magnet.pcd", cad_model);
+
+    if(getPoseCovisNew.call(triplets)) {
+       std::cout << "Calling triplets.....\n";
+       storeResultsCovisNew(resp, triplets, scenei, cad_model);
+       return true;
+    } else {
+        ROS_ERROR("Something went wrong when calling /object_detection/global");
+    }
     return false;
 }
 
@@ -804,7 +872,7 @@ bool pose_estimation_service(PoseEstimation::Request &req, PoseEstimation::Respo
         }
         else pcl::console::print_error("Cannot grasp frame from carmine & stereo! Are you sure they are running?!");
     }
- 
+
     ///------------------------------------------------------------------------------
     else if (scenario == "detect_rotorcaps_on_coveyour_belt"){
         ros::NodeHandle nh("~");
@@ -816,7 +884,7 @@ bool pose_estimation_service(PoseEstimation::Request &req, PoseEstimation::Respo
         if (stereo_pointCloud.size() > 0 && carmine_pointCloud.size() > 0) {
             saveLocallyPointClouds(pcddir);
             pcl::console::print_value("Detecting rotorcaps\n");
-            
+
             //we have the big pose, just cut conveyor and estimate rotorcaps
             if (local_screen_shot_pose_detected) {
                 outSmall = cutSceneScreenShot("conveyor", stereo_pointCloud);
@@ -849,7 +917,7 @@ bool pose_estimation_service(PoseEstimation::Request &req, PoseEstimation::Respo
             detectRotorcaps(outSmall, resp, constr_conveyor, false);
         }
         else pcl::console::print_error("There is no conveyour pose! Get conveyour pose first!\n");
-        
+
     }
     //------------------------------------------------------------------------------------------------------------
     else if (scenario == "detect_screen_shot"){
@@ -859,24 +927,73 @@ bool pose_estimation_service(PoseEstimation::Request &req, PoseEstimation::Respo
 
         nh.getParam("pcddir", pcddir);
 
+	movePTU(0, -0.5, pcddir);
         if (carmine_pointCloud.size() > 0) {
             pcl::console::print_value("Detecting scene screenshot!\n");
-            saveLocallyPointClouds(pcddir);
-            detectScreenShot(resp, false);
+            detectScreenShot(resp, true);
         } else pcl::console::print_error("Cannot detect, because carmine size is 0!\n");
     }
+//***************************************************************************
     else if (scenario == "detect_rotorcaps_on_the_fixture"){
         ros::NodeHandle nh("~");
         std::string pcddir;
         nh.getParam("pcddir", pcddir);
 
+	movePTU(1.55, -0.9, pcddir);
+
         if (stereo_pointCloud.size() > 1 && carmine_pointCloud.size()> 0){
-            saveLocallyPointClouds(pcddir);
+
             detectRotorcapsOnTheFixture(resp);
         }
-        else pcl::console::print_error("Fail with carmine or streo point clouds\n");   
+        else pcl::console::print_error("Fail with carmine or streo point clouds\n");
     }
+    else if (scenario == "detect_rotoraxles"){
+        ros::NodeHandle nh("~");
+        std::string pcddir;
+        nh.getParam("pcddir", pcddir);
 
+	movePTU(0.15, -0.5, pcddir);
+
+	ros::Duration(1).sleep(); 
+	ros::spinOnce();  
+     	saveLocallyPointClouds(pcddir);
+
+        if (stereo_pointCloud.size() > 1 && carmine_pointCloud.size()> 0){
+
+	    pcl::console::print_value("New  pointclouds are saved\n");
+        	detectRotorAxles(resp);
+        }
+        else pcl::console::print_error("Fail with carmine or streo point clouds\n");
+    }
+    //********************************************************
+     else if (scenario == "detect_ring"){
+        ros::NodeHandle nh("~");
+        std::string pcddir;
+        nh.getParam("pcddir", pcddir);
+
+		movePTU(-0.8, -0.5, pcddir);
+
+        if (stereo_pointCloud.size() > 1 && carmine_pointCloud.size()> 0){
+
+	    pcl::console::print_value("New  pointclouds are saved\n");
+        	detectRing(resp);
+        }
+        else pcl::console::print_error("Fail with carmine or streo point clouds\n");
+    }
+    else if (scenario == "detect_magnet"){
+        ros::NodeHandle nh("~");
+        std::string pcddir;
+        nh.getParam("pcddir", pcddir);
+
+	movePTU(-0.8, -0.5, pcddir);
+
+        if (stereo_pointCloud.size() > 1 && carmine_pointCloud.size()> 0){
+
+	    pcl::console::print_value("New  pointclouds are saved\n");
+        	detectMagnet(resp);
+        }
+        else pcl::console::print_error("Fail with carmine or streo point clouds\n");
+    }
 
     return true;
 }
@@ -916,7 +1033,7 @@ int main(int argc, char **argv) {
     ros::NodeHandle nh("~");
     ROS_INFO("waiting for service/getPose");
     getPose = nh.serviceClient<MsgT>("/service/getPose");
-    
+   
     getPoseCovisNew = nh.serviceClient<DetectObjectCovisNew>("/triplets/getPoseCovisNew");
 
     stereoPointCloudSaver(nh, "/pikeBack");
@@ -924,24 +1041,14 @@ int main(int argc, char **argv) {
     ROS_INFO("Starting services!");
 
     pcl::console::setVerbosityLevel(pcl::console::L_WARN);
-    
 
-  /*  if (!once) {
-        // Start
-        fillConstrains();
-
-        //load screen shot
-        string screensShotObjectPath;
-        nh.getParam("scene_screenshot_PCD",  screensShotObjectPath);
-        pcl::io::loadPCDFile(screensShotObjectPath, screen_shot_object);
-
-        //--------------------
-        once = true;
-    }
-*/
+    actionClient = new actionlib::SimpleActionClient<pose_estimation::PTUAction>("flir_PTU_action", true);
+    actionClient->waitForServer();
+  
     ros::ServiceServer servglobal = nh.advertiseService<PoseEstimation::Request, PoseEstimation::Response>("detect", pose_estimation_service);
 
     publish_for_vizualizer = nh.advertise<PoseEstimation::Response>("vizualize", 1000);
+    ROS_INFO("Just before spin");
     ros::spin();
 
     return 0;
