@@ -826,7 +826,7 @@ bool detectMagnet(PoseEstimation::Response &resp) {
     }
     return false;
 }
-
+int counter = 77;
 //------------------------------------------------------------------------------------------------------------------------
 bool pose_estimation_service(PoseEstimation::Request &req, PoseEstimation::Response &resp){
     ROS_INFO("Starting pose estimation service\n!");
@@ -845,6 +845,13 @@ bool pose_estimation_service(PoseEstimation::Request &req, PoseEstimation::Respo
             if (stereo_pointCloud.size() > 0) pcl::io::savePCDFile(pcddir+"stereo_PC.pcd", stereo_pointCloud);
             pcl::console::print_value("Saving stereo and carmine point clouds\n");
         }
+	//for test
+	std::stringstream name, name_s;
+	name << pcddir <<"/testData/carmine/"<<counter << ".pcd";
+	name_s << pcddir <<"/testData/stereo/"<< counter << ".pcd";
+	pcl::io::savePCDFileBinary(name.str(), carmine_pointCloud);
+	pcl::io::savePCDFileBinary(name_s.str(), stereo_pointCloud);
+counter++;
     }
 
     //..................................................................
@@ -895,7 +902,7 @@ bool pose_estimation_service(PoseEstimation::Request &req, PoseEstimation::Respo
                 pcl::console::print_value("Detecting conveyor, then rotorcaps\n");
                 processConveyorBelt(resp);
             }
-            bool rotorcaps_detected = detectRotorcaps(outSmall, resp, constr_conveyor, false);
+            bool rotorcaps_detected = detectRotorcaps(outSmall, resp, constr_conveyor, true);
 
         }
         else pcl::console::print_error("Cannot grasp frame from carmine & stereo! Are you sure they are running?! stereo size: %d carmine size: %d\n", stereo_pointCloud.size(), carmine_pointCloud.size());
