@@ -380,6 +380,8 @@ void storeResultsCovisNew(PoseEstimation::Response &resp, DetectObjectCovisNew d
     resp.pose_value = data.response.pose_value;
     resp.labels_int = data.response.labels_int;
 
+    resp.vizualizerPoses = data.response.vizualizerPoses;
+
     //publish here
     publish_for_vizualizer.publish(resp);
 }
