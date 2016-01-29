@@ -13,6 +13,10 @@
 #include "cv.h"
 #include <sstream>
 
+#include <opencv2/core/core.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/highgui/highgui.hpp>
+
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/common/norms.h>
@@ -381,9 +385,12 @@ void storeResultsCovisNew(PoseEstimation::Response &resp, DetectObjectCovisNew d
     resp.labels_int = data.response.labels_int;
 
     resp.vizualizerPoses = data.response.vizualizerPoses;
+    resp.pose_image = "/home/acat2/catkin_ws/src/aau_workcell/data/screenshot.png";
 
     //publish here
     publish_for_vizualizer.publish(resp);
+   // ros::Duration(0.3).sleep(); 
+    
 }
 //??????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
 
@@ -640,20 +647,30 @@ pcl::PointCloud<PointT> cutSceneScreenShot(string object_name, pcl::PointCloud<P
     return small_cube;
 }
 
+int counter = 0;
 //----------------------------------------------------------------------------
 void saveLocallyPointClouds(std::string pcddir){
+    
+    std::stringstream name, name_s;
+    
     if (carmine_pointCloud.size() < 1) pcl::console::print_error("CARMINE has less then 1 point!\n");
     else {
+        name << pcddir <<"/testDataRecording/carmine/"<< counter << ".pcd";
+        pcl::io::savePCDFileBinary(name.str(), carmine_pointCloud);
+       
         pcl::io::savePCDFileBinary(pcddir+"carmine_PC_binary.pcd", carmine_pointCloud);
         pcl::io::savePCDFile(pcddir+"carmine_PC.pcd", carmine_pointCloud);
-        pcl::console::print_error("CARMINE IS SAVED!!!!\n");
     }
     if (stereo_pointCloud.size() < 1) pcl::console::print_error("STEREO has less then 1 point!\n");
     else {
 
+	name_s << pcddir <<"/testDataRecording/stereo/"<< counter << ".pcd";
+	pcl::io::savePCDFileBinary(name_s.str(), stereo_pointCloud);
+
         pcl::io::savePCDFileBinary(pcddir+"stereo_PC_binary.pcd", stereo_pointCloud);
         pcl::io::savePCDFile(pcddir+"stereo_PC.pcd", stereo_pointCloud);
-    }
+    }	
+counter++;
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -828,7 +845,7 @@ bool detectMagnet(PoseEstimation::Response &resp) {
     }
     return false;
 }
-int counter = 77;
+
 //------------------------------------------------------------------------------------------------------------------------
 bool pose_estimation_service(PoseEstimation::Request &req, PoseEstimation::Response &resp){
     ROS_INFO("Starting pose estimation service\n!");
@@ -843,17 +860,10 @@ bool pose_estimation_service(PoseEstimation::Request &req, PoseEstimation::Respo
             pcl::console::print_value("Waiting for point clouds!\n");
         }
         else {
-            if (carmine_pointCloud.size() > 0) pcl::io::savePCDFile(pcddir+"carmine_PC.pcd", carmine_pointCloud);
-            if (stereo_pointCloud.size() > 0) pcl::io::savePCDFile(pcddir+"stereo_PC.pcd", stereo_pointCloud);
-            pcl::console::print_value("Saving stereo and carmine point clouds\n");
+            saveLocallyPointClouds(pcddir);
+            pcl::console::print_value("Saving stereo and carmine point clouds %d\n", counter);
         }
-	//for test
-	std::stringstream name, name_s;
-	name << pcddir <<"/testData/carmine/"<<counter << ".pcd";
-	name_s << pcddir <<"/testData/stereo/"<< counter << ".pcd";
-	pcl::io::savePCDFileBinary(name.str(), carmine_pointCloud);
-	pcl::io::savePCDFileBinary(name_s.str(), stereo_pointCloud);
-counter++;
+	
     }
 
     //..................................................................
@@ -951,8 +961,13 @@ counter++;
 	movePTU(1.55, -0.9, pcddir);
 
         if (stereo_pointCloud.size() > 1 && carmine_pointCloud.size()> 0){
-
             detectRotorcapsOnTheFixture(resp);
+            /*pcl::console::print_warn("Got poses: %d\n", resp.poses.size());
+	    ros::spinOnce();  
+     	    saveLocallyPointClouds(pcddir);
+            detectRotorcapsOnTheFixture(resp);
+            pcl::console::print_warn("Got poses 2: %d\n", resp.poses.size());
+            */
         }
         else pcl::console::print_error("Fail with carmine or streo point clouds\n");
     }
@@ -963,16 +978,22 @@ counter++;
 
 	movePTU(0.15, -0.5, pcddir);
 
+	//image for the projector
+	cv::Mat image = cv::imread("/home/acat2/catkin_ws/src/aau_workcell/data/projector_images/1280X800_04.png");
+	cv::imwrite( "/home/acat2/catkin_ws/src/aau_workcell/data/projector_images/projected_image.png", image );
+
 	ros::Duration(1).sleep(); 
 	ros::spinOnce();  
      	saveLocallyPointClouds(pcddir);
 
         if (stereo_pointCloud.size() > 1 && carmine_pointCloud.size()> 0){
 
-	    pcl::console::print_value("New  pointclouds are saved\n");
         	detectRotorAxles(resp);
         }
         else pcl::console::print_error("Fail with carmine or streo point clouds\n");
+
+	image = cv::imread("/home/acat2/catkin_ws/src/aau_workcell/data/projector_images/black.png");
+	cv::imwrite( "/home/acat2/catkin_ws/src/aau_workcell/data/projector_images/projected_image.png", image );
     }
     //********************************************************
      else if (scenario == "detect_ring"){
@@ -999,7 +1020,7 @@ counter++;
         if (stereo_pointCloud.size() > 1 && carmine_pointCloud.size()> 0){
 
 	    pcl::console::print_value("New  pointclouds are saved\n");
-        	detectMagnet(resp);
+            detectMagnet(resp);
         }
         else pcl::console::print_error("Fail with carmine or streo point clouds\n");
     }
@@ -1057,7 +1078,7 @@ int main(int argc, char **argv) {
     ros::ServiceServer servglobal = nh.advertiseService<PoseEstimation::Request, PoseEstimation::Response>("detect", pose_estimation_service);
 
     publish_for_vizualizer = nh.advertise<PoseEstimation::Response>("vizualize", 1000);
-    ROS_INFO("Just before spin");
+    //ROS_INFO("Just before spin");
     ros::spin();
 
     return 0;

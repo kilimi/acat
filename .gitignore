@@ -1,2 +1,6 @@
 CMakeLists.txt~
-src/inSceneDetector.cpp~
+*.cpp~
+*.xml~
+*.hpp~
+*.srv~
+*.h~

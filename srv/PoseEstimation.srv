@@ -22,3 +22,5 @@ sensor_msgs/PointCloud2 object
 
 # For pose vizualization
 geometry_msgs/Transform[] vizualizerPoses
+
+string pose_image
